@@ -241,12 +241,20 @@ export default function ResumeUploadPage() {
 
 
     const handleNext = () => {
+        // Stop any ongoing speech when moving to next question
+        if (typeof window !== 'undefined') {
+            window.speechSynthesis.cancel();
+        }
         if (currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
         }
     };
 
     const handlePrevious = () => {
+        // Stop any ongoing speech when moving to previous question
+        if (typeof window !== 'undefined') {
+            window.speechSynthesis.cancel();
+        }
         if (currentQuestionIndex > 0) {
             setCurrentQuestionIndex(prev => prev - 1);
         }
@@ -275,6 +283,12 @@ export default function ResumeUploadPage() {
 
             await Promise.all(evaluationPromises);
             setEvaluations(newEvaluations);
+
+            // Stop any ongoing speech before showing results
+            if (typeof window !== 'undefined') {
+                window.speechSynthesis.cancel();
+            }
+
             setIsInterviewComplete(true);
         } catch (err) {
             alert("Failed to evaluate all answers. Please try again.");

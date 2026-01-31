@@ -46,3 +46,5 @@ Thumbs.db
 
 # Tools
 .agent/
+
+phase3_backend_question_gen/question_cache.json

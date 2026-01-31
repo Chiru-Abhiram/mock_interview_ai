@@ -18,15 +18,8 @@ class InterviewScript(typing_extensions.TypedDict):
 
 class QuestionGenerator:
     def __init__(self):
-        load_dotenv()
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
-        
-        genai.configure(api_key=api_key)
-        # Using a model that supports JSON mode well
-        self.model = genai.GenerativeModel('gemini-flash-latest',
-                                           generation_config={"response_mime_type": "application/json"})
+        # Configuration is now handled by ai_utils dynamically
+        pass
 
     def generate_questions(self, resume_text: str, role: str = "Software Engineer", num_questions: int = 5, difficulty: str = "mixed", job_description: str = "", auto_select_count: bool = False) -> list[Question]:
         """
@@ -34,100 +27,221 @@ class QuestionGenerator:
         """
         
         # Build difficulty instruction
-        if difficulty == "mixed":
-            difficulty_instruction = "Mix of easy, medium, and hard questions."
-        else:
-            difficulty_instruction = f"All questions should be {difficulty} difficulty level."
+        difficulty_instruction = f"Target difficulty: {difficulty}."
         
         # Build quantity instruction
         if auto_select_count:
-            quantity_instruction = "Decide on an optimal number of interview questions (between 5 and 20) based on the depth of the resume and the complexity of the job description. Aim for a comprehensive evaluation."
+            quantity_instruction = "Select an optimal number of questions (5-12) based on the resume depth."
         else:
-            quantity_instruction = f"Generate exactly {num_questions} interview questions."
+            quantity_instruction = f"Generate exactly {num_questions} questions."
 
         # Build job description section
         job_desc_section = "None provided."
         if job_description.strip():
-            job_desc_section = f"---\n{job_description[:2000]}\n---"
+            job_desc_section = f"--- JOB DESCRIPTION ---\n{job_description[:2000]}\n---"
         
         prompt = f"""
-        You are an expert technical and HR interviewer. 
-        Your goal is to conduct a thorough interview for a candidate applying for a {role} position.
-        
+        You are a highly professional, senior technical recruiter and hiring manager. 
+        Your objective is to conduct a NATURAL, FACE-TO-FACE, and ENGAGING mock interview.
+
         {quantity_instruction}
-        
+        {difficulty_instruction}
+
         CANDIDATE DATA:
         Resume Content:
         ---
         {resume_text}
         ---
-        Job Description:
+
         {job_desc_section}
-        
-        REQUIRED MIX OF QUESTIONS (CRITICAL):
-        1. **Resume-Deep Dive (40%)**: Specific technical questions & behavioral scenarios based on the projects/skills in their resume.
-        2. **JD-Alignment (30%)**: Target requirements in the Job Description, even if not on the resume. Ask how they'd adapt their current skills to these new core requirements.
-        3. **Industry Standards (20%)**: Realistic "must-know" questions for a {role} (e.g., system design, core principles, patterns).
-        4. **HR & Behavioral (10%)**: Standard soft-skill questions (conflict, growth, culture fit).
-        
+
+        INTERVIEWER PERSONA (CRITICAL):
+        - **Sound Human**: Speak directly to the candidate as if you are in a room together.
+        - **No Meta-Commentary**: NEVER start a question with phrases like "The job description mentions", "Based on your resume", "Since you used Python", or "According to the documentation". Avoid referencing the JD or Resume explicitly in the question text.
+        - **Conversational Tone**: Use natural transitions. Don't be robotic.
+        - **Professional Curiosity**: Ask follow-up style questions that test depth.
+
+        FEW-SHOT EXAMPLES (HOW TO PHRASE QUESTIONS):
+        - ❌ BAD (Robotic): "Based on your resume, you used React. What are hooks?"
+        - ✅ GOOD (Human): "I noticed you worked on a few React projects. When you were building out the user interface, how did you decide when to use a custom hook versus a standard lifecycle method?"
+        - ❌ BAD (Robotic): "The job description emphasizes basic Python. Do you know list comprehensions?"
+        - ✅ GOOD (Human): "For this role, we do a lot of data processing in Python. Could you talk me through a time you had to optimize a piece of logic—maybe using something like list comprehensions—to handle a larger dataset?"
+
+        STRICT SEQUENCE OF QUESTIONS (IMMUTABLE):
+        Your output JSON MUST contain questions in exactly this logical order:
+        1. **MANDATORY FIRST QUESTION (ID: 1)**: You MUST start with a warm, professional introduction and then ask: "To get us started, could you walk me through your background and what specifically interested you about this {role} position?" or a variation of "Tell me about yourself." This is NOT optional.
+        2. **Role Fit (ID: 2)**: A natural follow-up on their motivation for the industry or current career direction.
+        3. **Experience Deep-Dive (30% of total)**: Conversational deep-dives into their resume projects.
+        4. **Skill Alignment (30% of total)**: Natural questions about role requirements (JD-based).
+        5. **Behavioral (20% of total)**: Teamwork/Conflict scenarios.
+        6. **The Signature Closing (Last ID)**: Professional wrap-up (e.g., "Why hire you?").
+
+        REINFORCED PHRASING RULES:
+        - NEVER use the words "resume", "job description", "JD", "listing", or "document" in your questions.
+        - Act as if you are speaking to the candidate in a real-time Zoom or in-person interview.
+        - Use phrases like "I noticed...", "You mentioned...", "I'm curious about...", "Walk me through...".
+
         STRICT RULES:
-        - **Zero Hallucination**: Do NOT invent projects or specific companies the candidate hasn't listed.
-        - **Experience Lock**: For "Resume-Deep Dive" questions, only use their actual listed tech/projects.
-        - **JD Flexibility**: It is OK (and required) to ask about JD skills they haven't listed yet to test their adaptability and learning curve.
-        - **Context Field**: For EVERY question, state the category (Resume, JD, Industry, or HR) and the specific reason/source for asking.
-        - {difficulty_instruction}
-        - Each question must be realistic and high-impact.
-        
+        - **No Labels**: Do not include category names (like "Behavioral:") inside the question text.
+        - **Context Field**: Short internal reason (e.g., "[Resume] Deep-dive on React architecture").
+
         RESPONSE FORMAT:
-        For each question, provide:
-        - id: A unique number
-        - text: The question text
+        Return a JSON object with a single key "questions" containing:
+        - id: Unique int (MUST correspond to the sequence order)
+        - text: The natural, human-sounding question text.
         - type: "technical", "behavioral", or "coding"
         - difficulty: "easy", "medium", or "hard"
-        - context: "[Category] Reason for this question: (quote/cite if applicable)"
-        - initial_code: (For "coding" type only) A simple boilerplate snippet.
-        
-        Return a JSON object with a single key "questions" containing these objects.
+        - context: Concise internal reasoning.
+        - initial_code: (Optional) For coding questions.
+        Return ONLY raw JSON.
         """
 
-        candidate_models = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-flash-latest',
-            'gemini-2.5-flash-lite'
-        ]
+        from ai_utils import run_genai_with_rotation
+        from question_bank import get_fallback_questions
         
-        last_error = None
-        for model_name in candidate_models:
-            try:
-                print(f"Generating questions with model: {model_name}")
-                model = genai.GenerativeModel(model_name, generation_config={"response_mime_type": "application/json"})
-                response = model.generate_content(prompt)
-                
-                # Handle empty response
-                if not response.text:
-                    continue
-                    
-                data = json.loads(response.text)
-                
-                # Simple validation to ensure we got what we expected
-                if "questions" in data:
-                    return data["questions"]
-                elif isinstance(data, list):
-                    return data
-                else:
-                    print(f"Unexpected JSON structure from {model_name}: {data.keys()}")
-                    continue
-                     
-            except Exception as e:
-                print(f"Error with {model_name}: {e}")
-                last_error = e
-                # Continue and try the next model
+        try:
+            response_text = run_genai_with_rotation(prompt, is_json=True)
+            data = json.loads(response_text)
+            
+            questions = []
+            if "questions" in data:
+                questions = data["questions"]
+            elif isinstance(data, list):
+                questions = data
+            
+            # Sort by ID first
+            questions.sort(key=lambda x: x.get("id", 0))
+            
+            # Enforce realistic interview structure
+            questions = self._enforce_interview_structure(questions, role, num_questions)
+            
+            print(f"✅ Generated {len(questions)} questions with realistic interview ordering")
+            return questions
+        except Exception as e:
+            print(f"Question Generation AI failed: {e}. Using high-quality fallback questions.")
+            return get_fallback_questions(resume_text, role, num_questions)
+    
+    def _enforce_interview_structure(self, questions: list[Question], role: str, num_questions: int) -> list[Question]:
+        """
+        Validates and enforces realistic interview structure:
+        1. First question MUST be an intro/background question
+        2. Last question MUST be a closing question
+        3. Middle questions should have proper distribution
+        """
+        if not questions or len(questions) == 0:
+            return questions
         
-        # If we reach here, all models failed
-        if last_error:
-            raise last_error
-        return []
+        # Define intro question patterns
+        intro_keywords = ["tell me about yourself", "walk me through your background", 
+                         "introduce yourself", "background", "what interested you"]
+        
+        # Define closing question patterns
+        closing_keywords = ["why hire you", "why should we hire", "what unique value", 
+                           "great fit for this role", "wrap up", "any questions for"]
+        
+        def is_intro_question(q: Question) -> bool:
+            text_lower = q.get("text", "").lower()
+            return any(keyword in text_lower for keyword in intro_keywords)
+        
+        def is_closing_question(q: Question) -> bool:
+            text_lower = q.get("text", "").lower()
+            return any(keyword in text_lower for keyword in closing_keywords)
+        
+        # Check if first question is intro
+        first_is_intro = is_intro_question(questions[0])
+        
+        # Check if last question is closing (only if we have more than 2 questions)
+        last_is_closing = False
+        if len(questions) > 2:
+            last_is_closing = is_closing_question(questions[-1])
+        
+        # If structure is already correct, just reassign IDs and return
+        if first_is_intro and (len(questions) <= 2 or last_is_closing):
+            for idx, q in enumerate(questions, start=1):
+                q["id"] = idx
+            print(f"✓ Interview structure validated: Intro → {len(questions)-2} middle → Closing")
+            return questions
+        
+        # Structure needs fixing - rebuild it
+        print(f"⚠ Fixing interview structure (intro: {first_is_intro}, closing: {last_is_closing})")
+        
+        intro_q = None
+        closing_q = None
+        middle_questions = []
+        
+        # Extract intro, closing, and middle questions
+        for q in questions:
+            if is_intro_question(q) and not intro_q:
+                intro_q = q
+            elif is_closing_question(q) and not closing_q:
+                closing_q = q
+            else:
+                middle_questions.append(q)
+        
+        # Create default intro if missing
+        if not intro_q:
+            intro_q = {
+                "id": 1,
+                "text": f"To get us started, could you walk me through your background and what specifically interested you about this {role} position?",
+                "type": "behavioral",
+                "difficulty": "easy",
+                "context": "Opening question to establish rapport",
+                "initial_code": ""
+            }
+            print("  → Added missing intro question")
+        
+        # Create default closing if missing and we have enough questions
+        if not closing_q and num_questions > 2:
+            closing_q = {
+                "id": 999,
+                "text": "Before we wrap up, why do you think you'd be a great fit for this role, and what unique value would you bring to our team?",
+                "type": "behavioral",
+                "difficulty": "medium",
+                "context": "Closing question to assess self-awareness and fit",
+                "initial_code": ""
+            }
+            print("  → Added missing closing question")
+        
+        # Rebuild the question list
+        final_questions = [intro_q]
+        
+        # Calculate target middle count
+        target_middle_count = num_questions - (2 if closing_q else 1)
+        
+        # GAP FILLING: If AI returned too few questions, cycle existing ones to fill
+        import copy
+        current_fill_idx = 0
+        while len(middle_questions) < target_middle_count:
+            if not middle_questions: 
+                # Emergency fallback if no middle questions at all
+                middle_questions.append({
+                    "id": 0, "text": "Could you walk me through a technical challenge you've faced?", 
+                    "type": "technical", "difficulty": "medium", "context": "Emergency fallback"
+                })
+                continue
+                
+            # Clone from existing middle questions
+            base_q = middle_questions[current_fill_idx % len(middle_questions)]
+            new_q = copy.deepcopy(base_q)
+            new_q["context"] += " (Extended discussion)"
+            middle_questions.append(new_q)
+            current_fill_idx += 1
+            print("  → Added gap-filler question to meet requested count")
+
+        # Add middle questions (trim if we have too many)
+        if closing_q:
+            final_questions.extend(middle_questions[:target_middle_count])
+            final_questions.append(closing_q)
+        else:
+            final_questions.extend(middle_questions[:target_middle_count])
+        
+        # Reassign IDs sequentially
+        for idx, q in enumerate(final_questions, start=1):
+            q["id"] = idx
+        
+        print(f"✓ Restructured to: Intro → {len(final_questions)-2 if closing_q else len(final_questions)-1} middle → {'Closing' if closing_q else 'No closing'}")
+        return final_questions[:num_questions]
+
 
 if __name__ == "__main__":
     # Quick sanity check

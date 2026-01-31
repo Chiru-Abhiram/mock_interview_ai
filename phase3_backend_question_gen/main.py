@@ -128,9 +128,13 @@ def generate_questions(request: QuestionRequest):
 
     # Level 1: Cache Check
     cache = read_cache()
+    # Use role from request if we eventually add it to QuestionRequest, 
+    # for now we'll use a better default or try to extract it.
+    target_role = "Software Engineer" 
+    
     key = get_cache_key(
         request.resume_text, 
-        "Software Engineer", 
+        target_role, 
         request.num_questions, 
         request.difficulty, 
         request.job_description,
@@ -138,14 +142,15 @@ def generate_questions(request: QuestionRequest):
     )
     
     if key in cache:
-        print(f"Level 1: Serving questions from cache ({key})")
+        print(f"Level 1: Serving questions from cache ({key}) - NOTE: Clear question_cache.json to refresh realism logic.")
         return QuestionResponse(questions=cache[key])
 
     try:
         # Level 2: AI Generation
+        print(f"Level 2: Generating NEW questions for {target_role} (Realism logic active)")
         questions_data = question_generator.generate_questions(
             resume_text=request.resume_text, 
-            role="Software Engineer",
+            role=target_role,
             num_questions=request.num_questions,
             difficulty=request.difficulty,
             job_description=request.job_description,
