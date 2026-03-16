@@ -15,22 +15,22 @@ A comprehensive, AI-powered platform to help job seekers practice interviews. It
 
 ## 🏗️ Project Structure
 
-The project is divided into 4 clear phases:
+The project is organized into modular phases:
 
 | Phase | Component | Responsibility |
 | :--- | :--- | :--- |
-| **Phase 1** | `phase1_frontend` | **The UI**: Built with Next.js, React, and Tailwind CSS. |
-| **Phase 2** | `phase2_resume_extraction` | **The Parser**: Python scripts that read and extract text from resumes. |
-| **Phase 3** | `phase3_backend_question_gen` | **The Brain**: FastAPI server that talks to Gemini AI to generate questions. |
-| **Phase 4** | `phase4_answer_evaluation` | **The Critic**: Evaluates user answers and provides scores/feedback. |
+| **Phase 1** | `phase1_frontend` | **The UI**: Premium Vanilla JS frontend with glassmorphism design. |
+| **Phase 2** | `phase2_resume_extraction` | **The Parser**: Python scripts that extract text from PDF/DOCX/TXT resumes. |
+| **Phase 3** | `phase3_backend_question_gen` | **The Brain**: FastAPI server that generates tailored questions via Gemini AI. |
+| **Phase 4** | `phase4_answer_evaluation` | **The Critic**: Evaluates user responses and provides scoring/feedback. |
 
 ---
 
 ## 🛠️ Getting Started
 
 ### 1. Prerequisites
-- **Node.js**: (for Frontend)
-- **Python 3.10+**: (for Backend)
+- **Python 3.10+** (for Backend and Resume Parsing)
+- **Modern Web Browser** (for Phase 1 Frontend)
 - **Gemini API Key**: Get one from [Google AI Studio](https://aistudio.google.com/).
 
 ### 2. Setup Backend
@@ -43,20 +43,21 @@ python main.py
 *Backend runs on: http://localhost:8000*
 
 ### 3. Setup Frontend
+The frontend is static and can be served with any local HTTP server.
 ```bash
 cd phase1_frontend
-npm install
-npm run dev
+# Example using Python's built-in server:
+python -m http.server 5500
 ```
-*Frontend runs on: http://localhost:3000*
+*Frontend runs on: http://localhost:5500/index.html*
 
 ---
 
 ## 🧠 Technologies Used
-- **Frontend**: Next.js, TypeScript, Tailwind CSS, Lucide Icons.
+- **Frontend**: Vanilla HTML5, CSS3 (Glassmorphism), JavaScript (ES6+).
 - **Backend**: FastAPI (Python), Uvicorn.
-- **AI**: Google Generative AI (Gemini Pro).
-- **Libraries**: Pydantic, Dotenv, PyPDF2 (likely in Phase 2).
+- **AI**: Google Generative AI (Gemini Flash/Pro).
+- **Libraries**: Pydantic, Dotenv, PyPDF2, python-docx.
 
 ---
 

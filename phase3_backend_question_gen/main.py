@@ -10,6 +10,12 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from question_bank import get_fallback_questions
 
+# Force UTF-8 output on Windows to avoid charmap UnicodeEncodeError
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 load_dotenv()
 
 CACHE_FILE = "question_cache.json"
@@ -48,7 +54,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,8 +101,9 @@ async def upload_resume(file: UploadFile = File(...)):
         # Parse the resume
         data = parse_resume(temp_file)
         
-        # Logging for accuracy audit
-        print(f"\n--- EXTRACTED RESUME TEXT (FIRST 300 CHARS) ---\n{data.text[:300]}\n---------------------------------------------\n")
+        # Logging for accuracy audit (safely handle unicode on Windows)
+        safe_text = data.text[:300].encode('utf-8', 'replace').decode('utf-8')
+        print(f"\n--- EXTRACTED RESUME TEXT (FIRST 300 CHARS) ---\n{safe_text}\n---------------------------------------------\n")
         
         return {
             "filename": file.filename,

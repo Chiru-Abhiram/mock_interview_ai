@@ -8,6 +8,12 @@ from docx import Document
 from pydantic import BaseModel
 from typing import Optional, List, Any
 
+# Force UTF-8 output on Windows to avoid charmap UnicodeEncodeError
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Ensure ai_utils is importable
 AI_UTILS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'phase3_backend_question_gen'))
 if AI_UTILS_PATH not in sys.path:
