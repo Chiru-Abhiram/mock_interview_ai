@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 import sys
 import os
@@ -45,7 +45,7 @@ try:
 except ImportError as e:
     print(f"CRITICAL WARNING: Could not import resume_parser: {e}")
     # Define a dummy function to prevent NameError, but raise HTTP 500 when called
-    def parse_resume(f):
+    def parse_resume(f, job_role=""):
         raise ImportError(f"Resume parser not loaded properly. Check server logs. Error: {e}")
 
 app = FastAPI(title="AI Mock Interview API")
@@ -92,14 +92,14 @@ def read_root():
     return {"message": "AI Mock Interview Backend is Running"}
 
 @app.post("/upload_resume")
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume(file: UploadFile = File(...), job_role: str = Form("")):
     temp_file = f"temp_{file.filename}"
     try:
         with open(temp_file, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
         # Parse the resume
-        data = parse_resume(temp_file)
+        data = parse_resume(temp_file, job_role=job_role)
         
         # Logging for accuracy audit (safely handle unicode on Windows)
         safe_text = data.text[:300].encode('utf-8', 'replace').decode('utf-8')
@@ -108,7 +108,8 @@ async def upload_resume(file: UploadFile = File(...)):
         return {
             "filename": file.filename,
             "extracted_text": data.text,
-            "message": "Resume processed successfully"
+            "message": "Resume processed successfully",
+            "skill_match": getattr(data, "skill_match", {})
         }
     except Exception as e:
         import traceback
@@ -202,7 +203,10 @@ def evaluate_answer(data: dict):
             "feedback": result.feedback,
             "missing_keywords": result.missing_keywords,
             "improvements": result.improvements,
-            "ideal_answer": result.ideal_answer
+            "ideal_answer": result.ideal_answer,
+            "ml_relevance_score": getattr(result, "ml_relevance_score", None),
+            "ml_relevance_grade": getattr(result, "ml_relevance_grade", None),
+            "hybrid_score": getattr(result, "hybrid_score", None)
         }
     except Exception as e:
         print(f"Evaluation Error: {e}")

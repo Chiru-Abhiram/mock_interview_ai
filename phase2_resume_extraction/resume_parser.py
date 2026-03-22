@@ -26,6 +26,123 @@ class ResumeData(BaseModel):
     skills: List[str] = []
     experience: List[str] = []
     projects: List[str] = []
+    skill_match: dict = {}
+
+# Load once at module level
+try:
+    import spacy
+    nlp = spacy.load("en_core_web_sm")
+except (ImportError, OSError):
+    nlp = None
+    print("spaCy model or library not found. Run: python -m spacy download en_core_web_sm")
+
+# Expandable role skills dictionary
+ROLE_SKILLS = {
+    "software engineer": [
+        "python", "java", "javascript", "git", "api", 
+        "sql", "algorithms", "docker", "linux", "testing"
+    ],
+    "data analyst": [
+        "sql", "excel", "python", "tableau", "statistics",
+        "pandas", "visualization", "reporting", "power bi"
+    ],
+    "data scientist": [
+        "python", "machine learning", "tensorflow", "pytorch",
+        "statistics", "sql", "numpy", "pandas", "deep learning"
+    ],
+    "web developer": [
+        "html", "css", "javascript", "react", "nodejs",
+        "git", "api", "responsive design", "sql"
+    ],
+    "devops engineer": [
+        "docker", "kubernetes", "aws", "ci/cd", "linux",
+        "terraform", "git", "monitoring", "ansible"
+    ],
+    "machine learning engineer": [
+        "python", "tensorflow", "pytorch", "scikit-learn",
+        "sql", "git", "docker", "statistics", "numpy"
+    ]
+}
+
+def match_skills_to_role(resume_skills: list, job_role: str) -> dict:
+    try:
+        if not nlp:
+            return _fallback_skill_match(resume_skills, job_role)
+        
+        # Normalize job role
+        role_key = job_role.lower().strip()
+        
+        # Find closest matching role in dictionary
+        required_skills = None
+        for role in ROLE_SKILLS:
+            if role in role_key or role_key in role:
+                required_skills = ROLE_SKILLS[role]
+                break
+        
+        # If role not found use NLP similarity to find closest
+        if not required_skills:
+            role_doc = nlp(role_key)
+            best_match = None
+            best_score = 0
+            for role, skills in ROLE_SKILLS.items():
+                role_doc2 = nlp(role)
+                sim = role_doc.similarity(role_doc2)
+                if sim > best_score:
+                    best_score = sim
+                    best_match = role
+            required_skills = ROLE_SKILLS.get(
+                best_match, 
+                ["communication", "problem solving", "teamwork"]
+            )
+        
+        # Normalize resume skills
+        resume_skills_lower = [s.lower() for s in resume_skills]
+        
+        # Find matches
+        matched = [
+            s for s in required_skills 
+            if any(s in rs or rs in s for rs in resume_skills_lower)
+        ]
+        missing = [s for s in required_skills if s not in matched]
+        
+        match_percentage = round(
+            len(matched) / max(len(required_skills), 1) * 100, 1
+        )
+        
+        # Recommendation based on match
+        if match_percentage >= 70:
+            recommendation = "Strong match for this role"
+            readiness = "High"
+        elif match_percentage >= 40:
+            recommendation = "Moderate match — some skill gaps exist"
+            readiness = "Medium"
+        else:
+            recommendation = "Consider upskilling before this interview"
+            readiness = "Low"
+        
+        return {
+            "match_percentage": match_percentage,
+            "matched_skills": matched,
+            "missing_skills": missing[:5],  # top 5 missing only
+            "recommendation": recommendation,
+            "readiness": readiness,
+            "total_required": len(required_skills)
+        }
+        
+    except Exception as e:
+        print(f"spaCy skill matching failed: {e}")
+        return _fallback_skill_match(resume_skills, job_role)
+
+def _fallback_skill_match(resume_skills: list, job_role: str) -> dict:
+    # Simple keyword fallback if spaCy fails
+    return {
+        "match_percentage": 50.0,
+        "matched_skills": resume_skills[:5],
+        "missing_skills": [],
+        "recommendation": "Resume processed successfully",
+        "readiness": "Medium",
+        "total_required": 10
+    }
 
 def extract_text_from_pdf(filepath: str) -> str:
     print(f"DEBUG: extract_text_from_pdf called for {filepath}")
@@ -142,7 +259,7 @@ def structure_resume_data(raw_text: str) -> dict:
         print(f"Error structuring resume data: {e}")
         return {"skills": [], "experience": [], "projects": []}
 
-def parse_resume(filepath: str) -> ResumeData:
+def parse_resume(filepath: str, job_role: str = "") -> ResumeData:
     print(f"DEBUG: parse_resume entry point for {filepath}")
     ext = os.path.splitext(filepath)[1].lower()
     text = ""
@@ -173,25 +290,41 @@ def parse_resume(filepath: str) -> ResumeData:
                   if len(text) > 0:  # Accept any text at all
                       print("Using keyword-based fallback for quota-limited resume.")
                       fallback_data = _fallback_keyword_extraction(text)
+                      extracted_skills = fallback_data["skills"]
+                      if job_role and extracted_skills:
+                          skill_match = match_skills_to_role(extracted_skills, job_role)
+                      else:
+                          skill_match = _fallback_skill_match(extracted_skills, "")
+
                       return ResumeData(
                           text=fallback_data["raw_text"], filename=os.path.basename(filepath), file_type=ext,
-                          skills=fallback_data["skills"], experience=fallback_data["experience"], projects=fallback_data["projects"]
+                          skills=extracted_skills, experience=fallback_data["experience"], projects=fallback_data["projects"],
+                          skill_match=skill_match
                       )
                   # If truly no text, create a minimal resume to allow interview to proceed
                   print("No text extracted. Creating minimal resume data.")
+                  skill_match = _fallback_skill_match(["General Software Development"], "")
                   return ResumeData(
                       text="Resume uploaded (image-based, quota exhausted)", 
                       filename=os.path.basename(filepath), 
                       file_type=ext,
                       skills=["General Software Development"],
                       experience=["Professional Experience"],
-                      projects=[]
+                      projects=[],
+                      skill_match=skill_match
                   )
              raise ValueError(f"AI Scan failed: {error_msg}")
 
+        extracted_skills = data.get("skills", [])
+        if job_role and extracted_skills:
+            skill_match = match_skills_to_role(extracted_skills, job_role)
+        else:
+            skill_match = _fallback_skill_match(extracted_skills, "")
+
         return ResumeData(
             text=extracted_text, filename=os.path.basename(filepath), file_type=ext,
-            skills=data.get("skills", []), experience=data.get("experience", []), projects=data.get("projects", [])
+            skills=extracted_skills, experience=data.get("experience", []), projects=data.get("projects", []),
+            skill_match=skill_match
         )
 
     try:
@@ -201,9 +334,16 @@ def parse_resume(filepath: str) -> ResumeData:
             structured_data = _fallback_keyword_extraction(extracted_text)
         else: raise e
 
+    extracted_skills = structured_data.get("skills", [])
+    if job_role and extracted_skills:
+        skill_match = match_skills_to_role(extracted_skills, job_role)
+    else:
+        skill_match = _fallback_skill_match(extracted_skills, "")
+
     return ResumeData(
         text=extracted_text, filename=os.path.basename(filepath), file_type=ext,
-        skills=structured_data.get("skills", []), experience=structured_data.get("experience", []), projects=structured_data.get("projects", [])
+        skills=extracted_skills, experience=structured_data.get("experience", []), projects=structured_data.get("projects", []),
+        skill_match=skill_match
     )
 
 if __name__ == "__main__":

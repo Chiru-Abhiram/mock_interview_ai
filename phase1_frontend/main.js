@@ -59,9 +59,12 @@ function showSuccess(msg) {
 }
 
 // ── API FUNCTIONS ─────────────────────────────────────────────────────────────
-async function parseResume(file) {
+async function parseResume(file, jobRole = '') {
     const formData = new FormData();
     formData.append('file', file);
+    if (jobRole) {
+        formData.append('job_role', jobRole);
+    }
     const res = await fetch(`${API_BASE}/upload_resume`, {
         method: 'POST',
         body: formData
@@ -163,8 +166,12 @@ function initUpload() {
         startBtn.disabled = true;
 
         try {
-            const data = await parseResume(file);
+            const jobRoleInput = $('job-role-input');
+            const currentJobRole = jobRoleInput ? jobRoleInput.value.trim() : '';
+
+            const data = await parseResume(file, currentJobRole);
             state.resumeText = data.extracted_text || '';
+            sessionStorage.setItem('skillMatch', JSON.stringify(data.skill_match || {}));
             fileInfo.innerHTML = `
                 <div style="color: var(--success); font-weight: 600;">✓ ${file.name}</div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${sizeMB} MB — Ready!</div>
@@ -539,6 +546,53 @@ function renderResults() {
         `;
     }
 
+    // Resume Match Card (ML)
+    const matchContainer = $('resume-match-container');
+    if (matchContainer) {
+        try {
+            const skillMatchData = sessionStorage.getItem('skillMatch');
+            if (skillMatchData) {
+                const skillMatch = JSON.parse(skillMatchData);
+                if (skillMatch && skillMatch.match_percentage !== undefined) {
+                    const matchedStr = skillMatch.matched_skills?.join(', ') || 'None';
+                    const missingStr = skillMatch.missing_skills?.join(', ') || 'None';
+                    const scoreColor = skillMatch.match_percentage >= 70 ? 'var(--success)' : (skillMatch.match_percentage >= 40 ? '#ffc107' : 'var(--error)');
+                    
+                    matchContainer.innerHTML = `
+                        <div class="card result-card" style="border-left: 4px solid ${scoreColor};">
+                            <h3 style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <span>📄 Resume Match</span>
+                                <span class="diff-badge" style="background: ${scoreColor}20; color: ${scoreColor}; border: none;">Score: ${skillMatch.match_percentage}%</span>
+                            </h3>
+                            <p style="margin-bottom: 16px;"><strong>Readiness:</strong> ${skillMatch.readiness || 'Medium'}</p>
+                            
+                            <div class="result-grid" style="margin-bottom: 16px;">
+                                <div class="result-col" style="background: rgba(105, 240, 174, 0.05); border: 1px solid rgba(105, 240, 174, 0.2);">
+                                    <h4 style="color: var(--success); margin-bottom: 8px;">✅ Matched Skills</h4>
+                                    <p style="font-size: 0.9rem;">${matchedStr}</p>
+                                </div>
+                                <div class="result-col" style="background: rgba(255, 80, 80, 0.05); border: 1px solid rgba(255, 80, 80, 0.2);">
+                                    <h4 style="color: var(--error); margin-bottom: 8px;">❌ Skill Gaps</h4>
+                                    <p style="font-size: 0.9rem;">${missingStr}</p>
+                                </div>
+                            </div>
+                            
+                            <p style="color: var(--text-secondary); font-style: italic; font-size: 0.9rem;">"${skillMatch.recommendation || ''}"</p>
+                        </div>
+                    `;
+                    matchContainer.style.display = 'block';
+                } else {
+                    matchContainer.style.display = 'none';
+                }
+            } else {
+                matchContainer.style.display = 'none';
+            }
+        } catch(e) {
+            console.error("Failed to parse skillMatch data", e);
+            matchContainer.style.display = 'none';
+        }
+    }
+
     // Per-question results
     const feedbackList = $('feedback-list');
     feedbackList.innerHTML = '';
@@ -547,6 +601,13 @@ function renderResults() {
         const scoreColor = res.score >= 7 ? 'var(--success)' : (res.score >= 5 ? '#ffc107' : 'var(--error)');
         const typeClass = `tag-${(res.type || 'technical').toLowerCase()}`;
         const diffClass = `diff-${(res.difficulty || 'medium').toLowerCase()}`;
+
+        // ML Relevance Grade
+        let relevanceHtml = '';
+        if (res.ml_relevance_grade) {
+            const relColor = res.ml_relevance_score >= 75 ? 'var(--success)' : (res.ml_relevance_score >= 55 ? '#ffc107' : 'var(--error)');
+            relevanceHtml = `<div style="font-size: 0.85rem; margin-top: 4px; color: var(--text-secondary);">Relevance: <span style="color: ${relColor}; font-weight: 600;">${res.ml_relevance_grade} (${res.ml_relevance_score}%)</span></div>`;
+        }
 
         const card = document.createElement('div');
         card.className = 'card result-card';
@@ -559,7 +620,10 @@ function renderResults() {
                     </div>
                     <h3 style="line-height: 1.4; font-size: 1rem;">${res.question}</h3>
                 </div>
-                <span class="result-score" style="color: ${scoreColor};">${res.score}/10</span>
+                <div style="text-align: right;">
+                    <span class="result-score" style="color: ${scoreColor};">${res.score}/10</span>
+                    ${relevanceHtml}
+                </div>
             </div>
 
             <div class="feedback-section">

@@ -7,11 +7,50 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class EvaluationResult(BaseModel):
-    score: int  # 0-10
+    score: float  # 0-10
     feedback: str
     missing_keywords: List[str]
     improvements: str = ""
     ideal_answer: str = ""  # The "sample/ideal" answer
+    ml_relevance_score: float = None
+    ml_relevance_grade: str = None
+    hybrid_score: float = None
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    import numpy as np
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+
+def calculate_tfidf_score(user_answer: str, ideal_answer: str) -> dict:
+    try:
+        if not ML_AVAILABLE:
+            raise ImportError("scikit-learn not installed")
+        if not user_answer or not ideal_answer:
+            return {"relevance_score": 0.5, "grade": "N/A"}
+        
+        vectorizer = TfidfVectorizer(stop_words='english')
+        vectors = vectorizer.fit_transform([user_answer, ideal_answer])
+        similarity = cosine_similarity(vectors[0], vectors[1])[0][0]
+        
+        # Convert to percentage
+        relevance = round(float(similarity) * 100, 1)
+        
+        # Grade based on similarity
+        if relevance >= 75: grade = "Excellent"
+        elif relevance >= 55: grade = "Good"
+        elif relevance >= 35: grade = "Fair"
+        else: grade = "Needs Improvement"
+        
+        return {
+            "relevance_score": relevance,
+            "grade": grade
+        }
+    except Exception as e:
+        print(f"TF-IDF scoring failed: {e}")
+        return {"relevance_score": 0.5, "grade": "N/A"}
 
 class AnswerEvaluator:
     def __init__(self):
@@ -64,12 +103,34 @@ class AnswerEvaluator:
             import json
             data = json.loads(text)
             
+            # ML: TF-IDF relevance scoring
+            tfidf_result = calculate_tfidf_score(
+                answer, 
+                data.get("ideal_answer", "")
+            )
+            
+            # Hybrid score: 70% Gemini + 30% TF-IDF
+            gemini_score = float(data.get("score", 5))
+            tfidf_normalized = (tfidf_result["relevance_score"] / 100) * 10
+            hybrid_score = round(
+                (gemini_score * 0.7) + (tfidf_normalized * 0.3), 1
+            )
+            
+            # Add ML fields to response
+            data["ml_relevance_score"] = tfidf_result["relevance_score"]
+            data["ml_relevance_grade"] = tfidf_result["grade"]
+            data["hybrid_score"] = hybrid_score
+            data["score"] = hybrid_score  # replace raw score
+            
             return EvaluationResult(
                 score=data.get("score", 0),
                 feedback=data.get("feedback", "No feedback provided."),
                 missing_keywords=data.get("missing_keywords", []),
                 improvements=data.get("improvements", "No specific improvements suggested."),
-                ideal_answer=data.get("ideal_answer", "No ideal answer provided.")
+                ideal_answer=data.get("ideal_answer", "No ideal answer provided."),
+                ml_relevance_score=data.get("ml_relevance_score"),
+                ml_relevance_grade=data.get("ml_relevance_grade"),
+                hybrid_score=data.get("hybrid_score")
             )
         except Exception as e:
             print(f"Evaluation AI failed: {e}")
